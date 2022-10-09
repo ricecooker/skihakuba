@@ -3,6 +3,7 @@ import plotly.express as px
 import requests
 import parsel
 import pandas as pd
+import io
 
 SOURCE_URL = 'https://www.hakubavalley.com/en/ski_resort_info_en/'
 
@@ -19,6 +20,8 @@ def _parse_ski_resort_info(html, debug_log=False):
         specs = resort.css('.spec-info dl dd::text').getall()[0:6]
         elevation = resort.css('.altitude p::text').getall()
         levels = resort.css('.course-level p::text').getall()
+        website = resort.css('.site_url a::attr(href)').get()
+        trail_map = resort.css('.btn-wht-blk a::attr(href)').get()
         resort_dicts.append(dict(
             name=name,
             length=int(specs[0].replace(',', '')),
@@ -33,6 +36,8 @@ def _parse_ski_resort_info(html, debug_log=False):
             beginner_pct=int(levels[0]) / 100.0,
             intermediate_pct=int(levels[1]) / 100.0,
             advanced_pct=int(levels[2]) / 100.0,
+            website=website,
+            trail_map=trail_map,
         ))
     return pd.DataFrame(resort_dicts)
 
@@ -98,6 +103,22 @@ def _combine_resorts(df, remove_parts_of_group=True):
     return df.sort_values('area', ascending=False)
 
 
+@st.experimental_memo
+def convert_to_excel(df: pd.DataFrame):
+    file = io.BytesIO()
+    df.to_excel(file)
+    file.seek(0)
+    return file
+
+
+@st.experimental_memo
+def convert_to_csv(df: pd.DataFrame):
+    file = io.BytesIO()
+    df.to_csv(file, encoding='utf-8')
+    file.seek(0)
+    return file
+
+
 def run():
     st.set_page_config(layout='wide', page_title='Hakuba Valley Resorts')
 
@@ -106,59 +127,78 @@ def run():
     Taking the data from {SOURCE_URL} and presenting them into generic charts to make it easier to compare.
     
     Hakuba 47 and Goryu Ski Resorts are connected so by default they're shown together.
+    
     ''')
-    resorts_df = get_resort_info(True)
 
-    with st.expander("Source Data", expanded=False):
-        st.write(resorts_df)
+    tab_chart, tab_maps = st.tabs(['Charts', 'Maps'])
+    with tab_chart:
+        resorts_df = get_resort_info(True)
 
-    combine_resorts = st.checkbox('Combine Hakuba 47 and Goryu?', value=True)
-    if combine_resorts:
-        resorts_df = _combine_resorts(resorts_df)
+        with st.expander("Source Data", expanded=False):
+            st.write(resorts_df)
+            st.download_button(
+                'Download as Excel', convert_to_excel(resorts_df), 'hakuba_data.xlsx', mime='application/vnd.ms-excel')
+            st.download_button(
+                'Download as CSV', convert_to_csv(resorts_df), 'hakuba_data.csv', mime='text/csv')
 
-    st.plotly_chart(px.bar(resorts_df.assign(
-        label=lambda df: df['gondolas'].apply(lambda f: f'{f} gondolas, ') + df['chairs'].apply(
-            lambda f: f'{f} chairs')),
-        y='area',
-        title='Skiable Area by Resort',
-        text='label',
-    ).update_layout(xaxis_title='', yaxis_title='ha'), use_container_width=True)
+        combine_resorts = st.checkbox('Combine Hakuba 47 and Goryu?', value=True)
+        if combine_resorts:
+            resorts_df = _combine_resorts(resorts_df)
 
-    st.plotly_chart(
-        px.bar(resorts_df,
-               y='total_trails_length',
-               title='Total Trail Length by Resort'
-               ).update_layout(xaxis_title='', yaxis_title='m')
-        , use_container_width=True)
+        st.plotly_chart(px.bar(resorts_df.assign(
+            label=lambda df: df['gondolas'].apply(lambda f: f'{f} gondolas, ') + df['chairs'].apply(
+                lambda f: f'{f} chairs')),
+            y='area',
+            title='Skiable Area by Resort',
+            text='label',
+        ).update_layout(xaxis_title='', yaxis_title='ha'), use_container_width=True)
 
-    st.plotly_chart(
-        px.bar(resorts_df,
-               y=['beginner_trails', 'intermediate_trails', 'advanced_trails'],
-               title='Trail Type by Resort',
-               color_discrete_map={'beginner_trails': '#86c96b', 'intermediate_trails': '#db3a2e',
-                                   'advanced_trails': '#555'},
-               ).update_layout(showlegend=False, yaxis_title='trails', xaxis_title='')
+        st.plotly_chart(
+            px.bar(resorts_df,
+                   y='total_trails_length',
+                   title='Total Trail Length by Resort'
+                   ).update_layout(xaxis_title='', yaxis_title='m')
+            , use_container_width=True)
 
-        , use_container_width=True)
+        st.plotly_chart(
+            px.bar(resorts_df,
+                   y=['beginner_trails', 'intermediate_trails', 'advanced_trails'],
+                   title='Trail Type by Resort',
+                   color_discrete_map={'beginner_trails': '#86c96b', 'intermediate_trails': '#db3a2e',
+                                           'advanced_trails': '#555'},
+                   ).update_layout(showlegend=False, yaxis_title='trails', xaxis_title='')
 
-    st.plotly_chart(
-        px.bar(resorts_df,
-               y=['beginner_pct', 'intermediate_pct', 'advanced_pct'],
-               title='Trail Type by Resort',
-               color_discrete_map={'beginner_pct': '#86c96b', 'intermediate_pct': '#db3a2e', 'advanced_pct': '#555'},
-               ).update_layout(showlegend=False, yaxis_title='%', yaxis_tickformat='0.0%', xaxis_title='')
+            , use_container_width=True)
 
-        , use_container_width=True)
+        st.plotly_chart(
+            px.bar(resorts_df,
+                   y=['beginner_pct', 'intermediate_pct', 'advanced_pct'],
+                   title='Trail Type by Resort',
+                   color_discrete_map={'beginner_pct': '#86c96b', 'intermediate_pct': '#db3a2e', 'advanced_pct': '#555'},
+                   ).update_layout(showlegend=False, yaxis_title='%', yaxis_tickformat='0.0%', xaxis_title='')
 
-    st.plotly_chart(
-        px.bar(resorts_df.assign(label=lambda df: df['max_elevation'].apply(lambda x: f'max elev={x:.0f}m')),
-               y='vertical',
-               text='label',
-               title='Vertical and Max Elevation by Resort',
-               barmode='group'
-               ).update_layout(showlegend=False, yaxis_title='vertical (m)', xaxis_title='')
-        , use_container_width=True)
+            , use_container_width=True)
 
+        st.plotly_chart(
+            px.bar(resorts_df.assign(label=lambda df: df['max_elevation'].apply(lambda x: f'max elev={x:.0f}m')),
+                   y='vertical',
+                   text='label',
+                   title='Vertical and Max Elevation by Resort',
+                   barmode='group'
+                   ).update_layout(showlegend=False, yaxis_title='vertical (m)', xaxis_title='')
+            , use_container_width=True)
 
+    with tab_maps:
+        st.markdown('''
+    Old, from Google Image Search
+    
+    ![Geographic Layout](https://skimap.org/data/5891/1/1477283996.jpg)
+   
+    From a handy site with village maps, trail maps, etc: https://www.samuraisnow.com/hakuba-maps
+    
+    ![Geographic Layout](https://www.samuraisnow.com/sites/default/files/_hakuba/Hakuba-Ski-Map.jpg)
+    
+    ![Simplified Layout](https://www.samuraisnow.com/sites/default/files/_hakuba/Hakuba-Valley-Map-Thumb-1.jpeg)
+        ''')
 if __name__ == '__main__':
     run()
