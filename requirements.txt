@@ -1,0 +1,4 @@
+parsel
+requests
+pandas
+plotly
