@@ -128,6 +128,8 @@ def run():
     
     Hakuba 47 and Goryu Ski Resorts are connected so by default they're shown together.
     
+    Hello World
+    
     ''')
 
     tab_chart, tab_maps = st.tabs(['Charts', 'Maps'])
