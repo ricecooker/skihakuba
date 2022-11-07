@@ -122,7 +122,7 @@ def convert_to_csv(df: pd.DataFrame):
 def run():
     st.set_page_config(layout='wide', page_title='Hakuba Valley Resorts')
 
-    st.title('Hakuba Valley Ski Resort Comparison')
+    st.title('Hakuba Valley Ski Resort Comparison!!!')
     st.markdown(f'''
     Taking the data from {SOURCE_URL} and presenting them into generic charts to make it easier to compare.
     
